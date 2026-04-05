@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Room — Watch/Read Together</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500&display=swap" rel="stylesheet">
+<!-- PDF.js -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<!-- Socket.io -->
+<script src="/socket.io/socket.io.js"></script>
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#08080f;--bg-card:#0d0d1a;--bg-el:#141428;--bg-input:#0a0a16;
+  --accent:#818cf8;--accent2:#22d3ee;--accent3:#f472b6;
+  --text:#f1f5f9;--muted:#64748b;--muted2:#94a3b8;
+  --border:rgba(129,140,248,0.1);--border2:rgba(129,140,248,0.2);
+  --red:#f87171;--green:#34d399;--yellow:#fbbf24;
+}
+html,body{height:100%;overflow:hidden}
+body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);display:flex;flex-direction:column}
+
+/* ── TOP BAR ── */
+.topbar{height:54px;background:rgba(8,8,15,0.9);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 16px;gap:12px;flex-shrink:0;backdrop-filter:blur(16px);z-index:100}
+.logo-sm{font-family:'Syne',sans-serif;font-weight:800;font-size:1rem;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;text-decoration:none;letter-spacing:-0.02em;white-space:nowrap}
+.room-name-tag{background:var(--bg-el);border:1px solid var(--border);border-radius:8px;padding:4px 12px;font-size:0.8rem;color:var(--muted2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px}
+.topbar-spacer{flex:1}
+.topbar-btn{width:36px;height:36px;background:var(--bg-el);border:1px solid var(--border);border-radius:10px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--muted2);transition:all 0.2s;font-size:1rem;flex-shrink:0;position:relative}
+.topbar-btn:hover{background:rgba(129,140,248,0.1);border-color:var(--border2);color:var(--text)}
+.topbar-btn.active{background:rgba(129,140,248,0.15);border-color:var(--accent);color:var(--accent)}
+.topbar-btn.danger:hover{background:rgba(248,113,113,0.1);border-color:rgba(248,113,113,0.3);color:var(--red)}
+.badge-dot-count{position:absolute;top:-4px;right:-4px;min-width:16px;height:16px;background:var(--accent3);border-radius:100px;font-size:0.6rem;font-weight:700;display:flex;align-items:center;justify-content:center;color:#fff;padding:0 3px;display:none}
+
+/* ── JOIN NOTIFICATION ── */
+#join-toast{position:fixed;top:60px;left:50%;transform:translateX(-50%) translateY(-80px);z-index:500;background:var(--bg-card);border:1px solid var(--border2);border-radius:100px;padding:8px 20px;font-size:0.82rem;color:var(--muted2);backdrop-filter:blur(16px);box-shadow:0 8px 32px rgba(0,0,0,0.4);transition:transform 0.35s cubic-bezier(0.34,1.56,0.64,1),opacity 0.35s ease;opacity:0;white-space:nowrap;cursor:pointer}
+#join-toast.show{transform:translateX(-50%) translateY(0);opacity:1}
+#join-toast .highlight{color:var(--accent);font-weight:600}
+
+/* ── LAYOUT ── */
+.room-body{flex:1;display:flex;overflow:hidden;position:relative}
+
+/* ── MEDIA AREA ── */
+.media-area{flex:1;display:flex;flex-direction:column;overflow:hidden;background:var(--bg);position:relative}
+
+/* ── MODE TABS ── */
+.mode-tabs{display:flex;gap:8px;padding:12px 16px;background:rgba(8,8,15,0.6);border-bottom:1px solid var(--border);flex-shrink:0}
+.mode-tab{display:flex;align-items:center;gap:6px;padding:7px 16px;border-radius:9px;cursor:pointer;font-size:0.83rem;font-weight:500;color:var(--muted);border:1px solid transparent;transition:all 0.2s}
+.mode-tab:hover{color:var(--muted2);background:var(--bg-el)}
+.mode-tab.active{background:rgba(129,140,248,0.12);border-color:var(--border2);color:var(--accent)}
+.mode-tab-ico{font-size:1rem}
+.creator-hint{margin-left:auto;font-size:0.75rem;color:var(--muted);display:flex;align-items:center;gap:5px;padding:6px 10px;background:rgba(251,191,36,0.06);border:1px solid rgba(251,191,36,0.15);border-radius:8px}
+
+/* ── VIDEO PANEL ── */
+#video-panel{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.video-setup{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:16px;padding:32px}
+.setup-title{font-family:'Syne',sans-serif;font-weight:700;font-size:1.2rem;margin-bottom:4px}
+.setup-desc{color:var(--muted2);font-size:0.875rem;text-align:center;margin-bottom:20px;line-height:1.6}
+.setup-card{background:var(--bg-card);border:1px solid var(--border);border-radius:18px;padding:28px;width:100%;max-width:480px}
+.input-row{display:flex;gap:8px;margin-bottom:12px}
+.link-input{flex:1;background:var(--bg-input);border:1px solid var(--border);border-radius:10px;padding:10px 14px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:0.875rem;outline:none;transition:border-color 0.2s}
+.link-input:focus{border-color:var(--accent)}
+.link-input::placeholder{color:var(--muted)}
+.setup-or{text-align:center;color:var(--muted);font-size:0.78rem;text-transform:uppercase;letter-spacing:0.1em;margin:8px 0}
+.how-link{display:flex;align-items:center;justify-content:center;gap:6px;color:var(--accent);font-size:0.8rem;cursor:pointer;text-decoration:underline;margin-top:10px}
+.waiting-msg{text-align:center;color:var(--muted2);font-size:0.9rem;padding:40px 20px}
+.waiting-msg .ico{font-size:2.5rem;margin-bottom:12px}
+
+/* Video container */
+#video-container{flex:1;position:relative;background:#000;overflow:hidden;display:none}
+#main-video{width:100%;height:100%;object-fit:contain}
+.video-overlay-dbl{position:absolute;inset:0;z-index:5;pointer-events:none}
+
+/* Custom controls */
+.v-controls{position:absolute;bottom:0;left:0;right:0;background:linear-gradient(transparent,rgba(0,0,0,0.85));padding:32px 16px 14px;z-index:10;opacity:0;transition:opacity 0.25s ease}
+#video-container:hover .v-controls,#video-container.ctrl-show .v-controls{opacity:1}
+.v-progress{height:4px;background:rgba(255,255,255,0.15);border-radius:100px;cursor:pointer;margin-bottom:12px;position:relative}
+.v-progress-fill{height:100%;background:var(--accent);border-radius:100px;position:relative;pointer-events:none}
+.v-progress-thumb{position:absolute;right:-6px;top:50%;transform:translateY(-50%);width:12px;height:12px;background:#fff;border-radius:50%;pointer-events:none;opacity:0;transition:opacity 0.2s}
+.v-progress:hover .v-progress-thumb{opacity:1}
+.v-row{display:flex;align-items:center;gap:10px}
+.v-btn{background:none;border:none;cursor:pointer;color:#fff;display:flex;align-items:center;justify-content:center;padding:4px;border-radius:6px;transition:all 0.15s;flex-shrink:0}
+.v-btn:hover{background:rgba(255,255,255,0.12)}
+.v-btn svg{width:20px;height:20px}
+.v-time{font-size:0.78rem;color:rgba(255,255,255,0.7);font-variant-numeric:tabular-nums;white-space:nowrap}
+.v-spacer{flex:1}
+.v-vol{display:flex;align-items:center;gap:6px}
+.v-vol input[type=range]{width:70px;-webkit-appearance:none;appearance:none;height:3px;background:rgba(255,255,255,0.3);border-radius:100px;outline:none;cursor:pointer}
+.v-vol input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:10px;height:10px;background:#fff;border-radius:50%}
+.v-subtitle-badge{background:rgba(129,140,248,0.2);border-radius:4px;padding:2px 6px;font-size:0.65rem;color:var(--accent)}
+
+/* Skip flash */
+.skip-flash{position:absolute;top:50%;transform:translateY(-50%);background:rgba(0,0,0,0.6);border-radius:50%;width:64px;height:64px;display:flex;align-items:center;justify-content:center;font-size:1.2rem;color:#fff;pointer-events:none;opacity:0;transition:opacity 0.3s}
+.skip-flash.left{left:15%}
+.skip-flash.right{right:15%}
+.skip-flash.show{opacity:1}
+
+/* ── PDF PANEL ── */
+#pdf-panel{flex:1;display:flex;overflow:hidden;display:none}
+.pdf-sidebar{width:220px;background:var(--bg-card);border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0}
+.pdf-sidebar-header{padding:12px 14px;border-bottom:1px solid var(--border);font-size:0.78rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;display:flex;align-items:center;justify-content:space-between}
+.pdf-list{flex:1;overflow-y:auto;padding:8px}
+.pdf-item{background:var(--bg-el);border:1px solid var(--border);border-radius:8px;padding:10px 10px;margin-bottom:6px;cursor:pointer;transition:all 0.2s;display:flex;align-items:center;gap:8px}
+.pdf-item:hover{border-color:var(--border2)}
+.pdf-item.active{background:rgba(129,140,248,0.1);border-color:var(--accent)}
+.pdf-item-name{font-size:0.78rem;color:var(--muted2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pdf-item-del{color:var(--muted);cursor:pointer;flex-shrink:0;padding:2px}
+.pdf-item-del:hover{color:var(--red)}
+.pdf-add-btn{margin:10px;background:rgba(129,140,248,0.08);border:1px dashed var(--border2);border-radius:8px;padding:10px;text-align:center;font-size:0.78rem;color:var(--accent);cursor:pointer;transition:all 0.2s}
+.pdf-add-btn:hover{background:rgba(129,140,248,0.12)}
+.pdf-empty{text-align:center;padding:24px 12px;color:var(--muted);font-size:0.8rem;line-height:1.5}
+.pdf-settings{padding:10px 14px;border-top:1px solid var(--border)}
+.pdf-orient{display:flex;gap:6px}
+.orient-btn{flex:1;padding:6px;background:var(--bg-input);border:1px solid var(--border);border-radius:7px;font-size:0.72rem;color:var(--muted);cursor:pointer;text-align:center;transition:all 0.2s}
+.orient-btn.active{background:rgba(129,140,248,0.1);border-color:var(--accent);color:var(--accent)}
+.pdf-page-info{text-align:center;font-size:0.72rem;color:var(--muted);padding:6px 0}
+.pdf-nav{display:flex;gap:6px;padding:0 0 4px}
+.pdf-nav-btn{flex:1;padding:6px;background:var(--bg-input);border:1px solid var(--border);border-radius:7px;font-size:0.75rem;color:var(--muted2);cursor:pointer;text-align:center;transition:all 0.2s}
+.pdf-nav-btn:hover{background:rgba(129,140,248,0.08);color:var(--text)}
+
+/* PDF viewer */
+.pdf-viewer{flex:1;overflow-y:auto;overflow-x:hidden;background:#1a1a2e;position:relative}
+.pdf-viewer::-webkit-scrollbar{width:6px}
+.pdf-viewer::-webkit-scrollbar-track{background:transparent}
+.pdf-viewer::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+#pdf-canvas-container{display:flex;flex-direction:column;align-items:center;gap:0}
+#pdf-canvas-container canvas{display:block;width:100% !important;max-width:100%;height:auto !important}
+#pdf-canvas-container.h-mode canvas{width:100% !important}
+.pdf-loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px;color:var(--muted)}
+.pdf-load-ring{width:36px;height:36px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── RIGHT PANEL (Chat + Voice) ── */
+.right-panel{width:300px;background:var(--bg-card);border-left:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;position:relative}
+.rp-tabs{display:flex;border-bottom:1px solid var(--border)}
+.rp-tab{flex:1;padding:11px;text-align:center;cursor:pointer;font-size:0.8rem;font-weight:500;color:var(--muted);border-bottom:2px solid transparent;transition:all 0.2s;position:relative}
+.rp-tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+.rp-tab:hover:not(.active){color:var(--muted2)}
+
+/* CHAT */
+#chat-panel{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.chat-msgs{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:10px}
+.chat-msgs::-webkit-scrollbar{width:4px}
+.chat-msgs::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+.chat-msg{display:flex;gap:8px;align-items:flex-start;animation:msgIn 0.2s ease}
+@keyframes msgIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.chat-avatar{width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,var(--accent),#6366f1);display:flex;align-items:center;justify-content:center;font-size:0.7rem;font-weight:700;flex-shrink:0;overflow:hidden}
+.chat-avatar img{width:100%;height:100%;object-fit:cover}
+.chat-bubble{background:var(--bg-el);border-radius:12px;border-top-left-radius:4px;padding:8px 11px;max-width:100%;word-break:break-word}
+.chat-name{font-size:0.7rem;color:var(--accent);font-weight:600;margin-bottom:3px}
+.chat-text{font-size:0.83rem;color:var(--muted2);line-height:1.45}
+.chat-mine .chat-bubble{background:rgba(129,140,248,0.12);border-top-left-radius:12px;border-top-right-radius:4px;margin-left:auto}
+.chat-mine{flex-direction:row-reverse}
+.chat-mine .chat-name{text-align:right;color:var(--accent2)}
+.chat-input-row{display:flex;gap:6px;padding:10px 12px;border-top:1px solid var(--border)}
+.chat-input{flex:1;background:var(--bg-input);border:1px solid var(--border);border-radius:10px;padding:9px 12px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:0.845rem;outline:none;transition:border-color 0.2s;resize:none}
+.chat-input:focus{border-color:var(--accent)}
+.chat-input::placeholder{color:var(--muted)}
+.chat-send{width:36px;height:36px;background:var(--accent);border:none;border-radius:10px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#fff;flex-shrink:0;transition:all 0.2s;align-self:flex-end}
+.chat-send:hover{background:#6366f1}
+.chat-empty{text-align:center;padding:32px 16px;color:var(--muted);font-size:0.82rem;line-height:1.6}
+.chat-empty .ico{font-size:2rem;margin-bottom:8px}
+
+/* VOICE PANEL */
+#voice-panel{flex:1;display:none;flex-direction:column;overflow:hidden;padding:16px}
+.voice-status{text-align:center;padding:20px 0 16px}
+.voice-ico{font-size:2.5rem;margin-bottom:8px}
+.voice-title{font-family:'Syne',sans-serif;font-weight:700;font-size:1rem;margin-bottom:4px}
+.voice-sub{font-size:0.8rem;color:var(--muted2)}
+.voice-users{display:flex;flex-direction:column;gap:8px;flex:1;overflow-y:auto}
+.voice-user{background:var(--bg-el);border:1px solid var(--border);border-radius:10px;padding:10px 12px;display:flex;align-items:center;gap:10px}
+.voice-user.speaking{border-color:var(--green);background:rgba(52,211,153,0.06)}
+.vu-avatar{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,var(--accent),#6366f1);display:flex;align-items:center;justify-content:center;font-size:0.8rem;font-weight:700;flex-shrink:0;overflow:hidden}
+.vu-avatar img{width:100%;height:100%;object-fit:cover}
+.vu-name{flex:1;font-size:0.84rem;font-weight:500}
+.vu-status{font-size:0.7rem;color:var(--muted)}
+.vu-muted{color:var(--red)}
+.vu-actions{display:flex;gap:4px}
+.vu-btn{width:26px;height:26px;background:var(--bg-input);border:1px solid var(--border);border-radius:6px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:0.7rem;transition:all 0.2s}
+.vu-btn:hover{border-color:var(--border2);background:rgba(129,140,248,0.08)}
+.voice-controls{padding-top:16px;display:flex;gap:8px}
+.vc-btn{flex:1;padding:11px;border-radius:12px;border:none;font-family:'DM Sans',sans-serif;font-size:0.85rem;font-weight:500;cursor:pointer;transition:all 0.2s;display:flex;align-items:center;justify-content:center;gap:6px}
+.vc-join{background:var(--green);color:#000}
+.vc-join:hover{opacity:0.9}
+.vc-leave{background:rgba(248,113,113,0.15);color:var(--red);border:1px solid rgba(248,113,113,0.25)}
+.vc-leave:hover{background:rgba(248,113,113,0.25)}
+.vc-mute{background:var(--bg-el);color:var(--muted2);border:1px solid var(--border)}
+.vc-mute:hover{background:rgba(129,140,248,0.08);color:var(--text)}
+.vc-mute.muted{background:rgba(248,113,113,0.1);color:var(--red);border-color:rgba(248,113,113,0.25)}
+
+/* ── WATERMARK EMOJI ── */
+#watermark-emoji{position:fixed;bottom:80px;right:16px;z-index:200;font-size:1.8rem;opacity:0.18;cursor:pointer;transition:opacity 0.25s,transform 0.25s;user-select:none;filter:drop-shadow(0 0 8px rgba(129,140,248,0.3))}
+#watermark-emoji:hover{opacity:0.7;transform:scale(1.15)}
+
+/* USERS POPUP */
+#users-popup{position:fixed;bottom:118px;right:16px;z-index:300;background:var(--bg-card);border:1px solid var(--border2);border-radius:16px;width:230px;max-height:320px;overflow-y:auto;box-shadow:0 16px 48px rgba(0,0,0,0.5);display:none;animation:popIn 0.2s ease}
+@keyframes popIn{from{opacity:0;transform:scale(0.92) translateY(10px)}to{opacity:1;transform:scale(1) translateY(0)}}
+#users-popup::-webkit-scrollbar{width:4px}
+#users-popup::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+.up-header{padding:12px 14px;border-bottom:1px solid var(--border);font-size:0.75rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em}
+.up-user{display:flex;align-items:center;gap:10px;padding:9px 14px;border-bottom:1px solid var(--border);transition:background 0.2s}
+.up-user:last-child{border-bottom:none}
+.up-user:hover{background:rgba(129,140,248,0.04)}
+.up-avatar{width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,var(--accent),#6366f1);display:flex;align-items:center;justify-content:center;font-size:0.7rem;font-weight:700;flex-shrink:0;overflow:hidden}
+.up-avatar img{width:100%;height:100%;object-fit:cover}
+.up-name{flex:1;font-size:0.82rem;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.up-crown{font-size:0.75rem}
+.up-actions{display:flex;gap:3px}
+.up-action{width:22px;height:22px;background:var(--bg-el);border:1px solid var(--border);border-radius:5px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:0.65rem;transition:all 0.2s}
+.up-action:hover{border-color:var(--border2)}
+.up-action.kick:hover{background:rgba(248,113,113,0.1);border-color:rgba(248,113,113,0.3)}
+.up-action.mute:hover{background:rgba(251,191,36,0.1);border-color:rgba(251,191,36,0.3)}
+
+/* ── MODALS ── */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.7);backdrop-filter:blur(8px);z-index:600;display:none;align-items:center;justify-content:center;padding:16px}
+.modal-overlay.open{display:flex}
+.modal{background:var(--bg-card);border:1px solid var(--border);border-radius:20px;width:100%;max-width:440px;max-height:90vh;overflow-y:auto;animation:modalIn 0.25s ease}
+@keyframes modalIn{from{opacity:0;transform:scale(0.95)}to{opacity:1;transform:scale(1)}}
+.modal-head{padding:20px 24px 0;display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
+.modal-title{font-family:'Syne',sans-serif;font-weight:800;font-size:1.1rem;letter-spacing:-0.02em}
+.close-btn{width:30px;height:30px;background:var(--bg-el);border:1px solid var(--border);border-radius:7px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--muted);transition:all 0.2s}
+.close-btn:hover{color:var(--red);border-color:rgba(248,113,113,0.3)}
+.modal-body{padding:0 24px 24px}
+.field{margin-bottom:14px}
+label{display:block;font-size:0.75rem;color:var(--muted2);font-weight:500;margin-bottom:5px;text-transform:uppercase;letter-spacing:0.03em}
+.m-input{width:100%;background:var(--bg-input);border:1px solid var(--border);border-radius:9px;padding:10px 13px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:0.875rem;outline:none;transition:border-color 0.2s}
+.m-input:focus{border-color:var(--accent)}
+.m-input::placeholder{color:var(--muted)}
+.m-file{width:100%;background:var(--bg-input);border:2px dashed var(--border2);border-radius:9px;padding:20px;text-align:center;cursor:pointer;transition:all 0.2s;font-size:0.84rem;color:var(--muted2);position:relative}
+.m-file:hover{border-color:var(--accent);color:var(--accent)}
+.m-file input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer}
+.m-file .file-ico{font-size:1.6rem;margin-bottom:6px}
+.mbtn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:12px;border-radius:11px;font-family:'DM Sans',sans-serif;font-size:0.9rem;font-weight:600;cursor:pointer;border:none;transition:all 0.2s;margin-bottom:8px}
+.mbtn-primary{background:linear-gradient(135deg,var(--accent),#6366f1);color:#fff}
+.mbtn-primary:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 8px 24px rgba(129,140,248,0.3)}
+.mbtn-primary:disabled{opacity:0.5;cursor:not-allowed}
+.mbtn-secondary{background:var(--bg-el);color:var(--muted2);border:1px solid var(--border)}
+.mbtn-secondary:hover{color:var(--text);border-color:var(--border2)}
+.how-section{background:var(--bg-el);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:16px;font-size:0.8rem;color:var(--muted2);line-height:1.65}
+.how-section h4{font-family:'Syne',sans-serif;font-size:0.85rem;color:var(--text);margin-bottom:8px}
+.how-section a{color:var(--accent);text-decoration:none}
+.how-section code{background:rgba(129,140,248,0.1);padding:1px 5px;border-radius:3px;font-family:monospace;font-size:0.85em;color:var(--accent)}
+.m-alert{padding:9px 12px;border-radius:8px;font-size:0.82rem;margin-bottom:12px;display:none}
+.m-alert.error{background:rgba(248,113,113,0.1);border:1px solid rgba(248,113,113,0.25);color:var(--red)}
+.m-alert.success{background:rgba(52,211,153,0.1);border:1px solid rgba(52,211,153,0.25);color:var(--green)}
+.m-alert.show{display:block}
+.upload-progress{height:4px;background:var(--border);border-radius:100px;overflow:hidden;margin-top:8px;display:none}
+.upload-progress-bar{height:100%;background:var(--accent);border-radius:100px;width:0%;transition:width 0.3s}
+.spin{display:inline-block;width:13px;height:13px;border:2px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;animation:spin 0.6s linear infinite;margin-right:5px;vertical-align:middle}
+
+/* How-to modal */
+.howto-section{margin-bottom:20px}
+.howto-section h3{font-family:'Syne',sans-serif;font-size:0.95rem;font-weight:700;margin-bottom:10px;display:flex;align-items:center;gap:8px}
+.howto-steps{display:flex;flex-direction:column;gap:8px}
+.howto-step{background:var(--bg-el);border:1px solid var(--border);border-radius:10px;padding:11px 14px;font-size:0.8rem;color:var(--muted2);line-height:1.65;counter-increment:step}
+.howto-step strong{color:var(--text)}
+.howto-step code{background:rgba(129,140,248,0.1);padding:1px 5px;border-radius:3px;font-family:monospace;font-size:0.85em;color:var(--accent)}
+.divider-txt{text-align:center;font-size:0.72rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);margin:12px 0}
+
+/* KICKED overlay */
+#kicked-overlay{position:fixed;inset:0;background:rgba(8,8,15,0.97);z-index:1000;display:none;align-items:center;justify-content:center;flex-direction:column;gap:16px;text-align:center;padding:24px}
+#kicked-overlay.show{display:flex}
+#kicked-overlay .ico{font-size:3.5rem}
+#kicked-overlay h2{font-family:'Syne',sans-serif;font-weight:800;font-size:1.5rem}
+#kicked-overlay p{color:var(--muted2);font-size:0.9rem}
+
+/* Responsive */
+@media(max-width:900px){
+  .right-panel{width:260px}
+  .pdf-sidebar{width:180px}
+}
+@media(max-width:700px){
+  .right-panel{position:fixed;bottom:0;left:0;right:0;top:auto;height:55%;z-index:150;border-left:none;border-top:1px solid var(--border);transform:translateY(100%);transition:transform 0.3s ease}
+  .right-panel.mobile-open{transform:translateY(0)}
+  .pdf-sidebar{display:none}
+  #watermark-emoji{bottom:16px}
+}
+</style>
+</head>
+<body>
+
+<!-- KICKED OVERLAY -->
+<div id="kicked-overlay">
+  <div class="ico">🚫</div>
+  <h2>You were removed</h2>
+  <p id="kicked-msg">The room creator has removed you from this room.</p>
+  <button onclick="window.location.href='/mainpage'" style="background:var(--accent);color:#fff;border:none;padding:12px 28px;border-radius:12px;font-family:'DM Sans',sans-serif;font-size:0.95rem;font-weight:600;cursor:pointer;margin-top:8px">Back to Dashboard</button>
+</div>
+
+<!-- JOIN TOAST -->
+<div id="join-toast"></div>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <a class="logo-sm" href="/mainpage">W/R</a>
+  <div class="room-name-tag" id="topbar-room-name">Loading...</div>
+  <div class="topbar-spacer"></div>
+  <!-- Creator badge -->
+  <div id="creator-badge" style="display:none;background:rgba(251,191,36,0.1);border:1px solid rgba(251,191,36,0.2);border-radius:7px;padding:4px 10px;font-size:0.7rem;color:var(--yellow);white-space:nowrap">👑 Creator</div>
+  <button class="topbar-btn" id="chat-toggle-btn" onclick="toggleRightPanel('chat')" title="Chat">💬</button>
+  <button class="topbar-btn" id="voice-toggle-btn" onclick="toggleRightPanel('voice')" title="Voice Chat">🎙️</button>
+  <button class="topbar-btn danger" onclick="leaveRoom()" title="Leave Room">
+    <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+  </button>
+</div>
+
+<!-- ROOM BODY -->
+<div class="room-body">
+
+  <!-- MEDIA AREA -->
+  <div class="media-area">
+    <!-- Mode tabs -->
+    <div class="mode-tabs">
+      <div class="mode-tab active" id="tab-video" onclick="switchMode('video')">
+        <span class="mode-tab-ico">🎬</span> Video
+      </div>
+      <div class="mode-tab" id="tab-pdf" onclick="switchMode('pdf')">
+        <span class="mode-tab-ico">📖</span> PDF / Manga
+      </div>
+      <div id="creator-hint" class="creator-hint" style="display:none">
+        <span>👑</span> <span>You control the room</span>
+      </div>
+    </div>
+
+    <!-- VIDEO PANEL -->
+    <div id="video-panel" style="flex:1;display:flex;flex-direction:column;overflow:hidden">
+      <!-- Creator: setup UI -->
+      <div id="video-setup" class="video-setup" style="display:none">
+        <div class="setup-card">
+          <div class="setup-title">🎬 Load a Video</div>
+          <div class="setup-desc">Paste a direct streaming link. Everyone in the room will see it instantly.</div>
+          <div class="input-row">
+            <input class="link-input" id="video-url-input" placeholder="https://... (.mp4, .webm, .m3u8)" type="url">
+            <button onclick="loadVideoUrl()" style="background:var(--accent);color:#fff;border:none;border-radius:10px;padding:0 18px;cursor:pointer;font-weight:600;font-family:'DM Sans',sans-serif;white-space:nowrap;transition:all 0.2s" onmouseover="this.style.opacity=0.85" onmouseout="this.style.opacity=1">Load</button>
+          </div>
+          <div class="how-link" onclick="openModal('howto-modal')">
+            <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+            How to get a streaming link?
+          </div>
+          <div id="subtitle-section" style="display:none;margin-top:16px;border-top:1px solid var(--border);padding-top:16px">
+            <div style="font-size:0.8rem;color:var(--muted2);margin-bottom:8px">📝 Add Subtitle File (.vtt, .srt)</div>
+            <div class="input-row">
+              <input class="link-input" id="sub-url-input" placeholder="Subtitle URL (.vtt) or pick file" type="text">
+              <label style="background:var(--bg-el);color:var(--muted2);border:1px solid var(--border);border-radius:10px;padding:0 14px;cursor:pointer;display:flex;align-items:center;font-size:0.82rem;white-space:nowrap;text-transform:none;letter-spacing:0">
+                File
+                <input type="file" accept=".vtt,.srt" style="display:none" onchange="loadSubFile(this)">
+              </label>
+              <button onclick="loadSubtitle()" style="background:var(--bg-el);color:var(--accent);border:1px solid var(--border2);border-radius:10px;padding:0 14px;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:0.82rem;white-space:nowrap">Add</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Non-creator: waiting -->
+      <div id="video-waiting" class="video-setup" style="display:none">
+        <div class="waiting-msg">
+          <div class="ico">⏳</div>
+          <div style="font-family:'Syne',sans-serif;font-weight:700;margin-bottom:8px">Waiting for host...</div>
+          <div style="font-size:0.85rem;color:var(--muted2)">The room creator will load a video shortly.</div>
+        </div>
+      </div>
+
+      <!-- Video player -->
+      <div id="video-container">
+        <video id="main-video" crossorigin="anonymous">
+          <track kind="subtitles" id="sub-track" src="" default>
+        </video>
+        <!-- Skip flash indicators -->
+        <div class="skip-flash left" id="skip-left">⏪ 10s</div>
+        <div class="skip-flash right" id="skip-right">10s ⏩</div>
+        <!-- Controls -->
+        <div class="v-controls" id="v-controls">
+          <div class="v-progress" id="v-progress" onclick="seekVideo(event)">
+            <div class="v-progress-fill" id="v-progress-fill" style="width:0%">
+              <div class="v-progress-thumb"></div>
+            </div>
+          </div>
+          <div class="v-row">
+            <button class="v-btn" id="v-play-btn" onclick="togglePlay()">
+              <svg id="play-icon" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
+            </button>
+            <button class="v-btn" onclick="skip(-10)" title="-10s">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 17l-5-5 5-5"/><path d="M18 17l-5-5 5-5"/></svg>
+            </button>
+            <button class="v-btn" onclick="skip(10)" title="+10s">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 17l5-5-5-5"/><path d="M13 17l5-5-5-5"/></svg>
+            </button>
+            <span class="v-time" id="v-time">0:00 / 0:00</span>
+            <div class="v-spacer"></div>
+            <span class="v-subtitle-badge" id="sub-badge" style="display:none">CC</span>
+            <div class="v-vol">
+              <button class="v-btn" onclick="toggleMuteVol()">
+                <svg id="vol-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11,5 6,9 2,9 2,15 6,15 11,19"/><path d="M19.07,4.93a10,10,0,0,1,0,14.14M15.54,8.46a5,5,0,0,1,0,7.07"/></svg>
+              </button>
+              <input type="range" id="vol-slider" min="0" max="1" step="0.05" value="1" oninput="setVolume(this.value)">
+            </div>
+            <button class="v-btn" onclick="toggleFullscreen()" title="Fullscreen">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 00-2 2v3m18 0V5a2 2 0 00-2-2h-3m0 18h3a2 2 0 002-2v-3M3 16v3a2 2 0 002 2h3"/></svg>
+            </button>
+            <button class="v-btn" id="sub-toggle-btn" onclick="openCreatorSubtitle()" title="Subtitles" style="display:none">CC</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PDF PANEL -->
+    <div id="pdf-panel" style="display:none;flex:1;overflow:hidden">
+      <!-- Sidebar -->
+      <div class="pdf-sidebar">
+        <div class="pdf-sidebar-header">
+          PDFs
+          <span id="pdf-count" style="background:var(--accent);color:#fff;border-radius:100px;padding:1px 7px;font-size:0.65rem;font-weight:700">0</span>
+        </div>
+        <div class="pdf-list" id="pdf-list">
+          <div class="pdf-empty" id="pdf-empty">No PDFs loaded yet</div>
+        </div>
+        <div id="pdf-creator-add" style="display:none">
+          <div class="pdf-add-btn" onclick="openModal('pdf-modal')">+ Add PDF</div>
+        </div>
+        <div class="pdf-settings">
+          <div style="font-size:0.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:6px">Orientation</div>
+          <div class="pdf-orient">
+            <div class="orient-btn active" id="orient-h" onclick="setPdfOrientation('horizontal')">Webtoon</div>
+            <div class="orient-btn" id="orient-v" onclick="setPdfOrientation('vertical')">Page</div>
+          </div>
+          <div class="pdf-page-info" id="pdf-page-info">—</div>
+          <div class="pdf-nav">
+            <div class="pdf-nav-btn" onclick="pdfPrevPage()">◀ Prev</div>
+            <div class="pdf-nav-btn" onclick="pdfNextPage()">Next ▶</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- PDF viewer -->
+      <div class="pdf-viewer" id="pdf-viewer-scroll" onscroll="onPdfScroll()">
+        <div id="pdf-canvas-container" class="h-mode"></div>
+        <div class="pdf-loading" id="pdf-loading" style="display:none">
+          <div class="pdf-load-ring"></div>
+          <div style="font-size:0.85rem;color:var(--muted)">Loading PDF...</div>
+        </div>
+        <div id="pdf-viewer-empty" style="display:flex;align-items:center;justify-content:center;height:100%;flex-direction:column;gap:12px;color:var(--muted);font-size:0.9rem">
+          <div style="font-size:2.5rem">📖</div>
+          <div>No PDF loaded yet</div>
+          <div style="font-size:0.8rem;color:var(--muted)">Creator will load a PDF shortly</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT PANEL -->
+  <div class="right-panel" id="right-panel">
+    <div class="rp-tabs">
+      <div class="rp-tab active" id="rpt-chat" onclick="switchRpTab('chat')">💬 Chat</div>
+      <div class="rp-tab" id="rpt-voice" onclick="switchRpTab('voice')">🎙️ Voice</div>
+    </div>
+    <!-- CHAT -->
+    <div id="chat-panel" style="flex:1;display:flex;flex-direction:column;overflow:hidden">
+      <div class="chat-msgs" id="chat-msgs">
+        <div class="chat-empty"><div class="ico">💬</div>No messages yet. Say hi!</div>
+      </div>
+      <div class="chat-input-row">
+        <textarea class="chat-input" id="chat-input" placeholder="Type a message..." rows="1" maxlength="1000" onkeydown="chatKeydown(event)" oninput="autoResize(this)"></textarea>
+        <button class="chat-send" onclick="sendChat()">
+          <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        </button>
+      </div>
+    </div>
+    <!-- VOICE -->
+    <div id="voice-panel" style="display:none;flex-direction:column;flex:1;overflow:hidden;padding:16px">
+      <div class="voice-status">
+        <div class="voice-ico" id="v-status-ico">🎙️</div>
+        <div class="voice-title" id="v-status-title">Voice Chat</div>
+        <div class="voice-sub" id="v-status-sub">Join to talk with everyone in the room</div>
+      </div>
+      <div class="voice-users" id="voice-users-list"></div>
+      <div class="voice-controls">
+        <button class="vc-btn vc-join" id="vc-join-btn" onclick="joinVoice()">🎙️ Join Voice</button>
+        <button class="vc-btn vc-mute" id="vc-mute-btn" onclick="toggleMicMute()" style="display:none">🎙️ Mute</button>
+        <button class="vc-btn vc-leave" id="vc-leave-btn" onclick="leaveVoice()" style="display:none">📵 Leave</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- WATERMARK EMOJI -->
+<div id="watermark-emoji" onclick="toggleUsersPopup()" title="Room members">😹</div>
+
+<!-- USERS POPUP -->
+<div id="users-popup">
+  <div class="up-header" id="up-header">Members (0)</div>
+  <div id="up-list"></div>
+</div>
+
+<!-- VIDEO LOAD MODAL (creator) -->
+<div class="modal-overlay" id="video-modal">
+  <div class="modal">
+    <div class="modal-head">
+      <span class="modal-title">🎬 Load Video</span>
+      <button class="close-btn" onclick="closeModal('video-modal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="m-alert" id="vm-alert"></div>
+      <div class="field">
+        <label>Streaming Link</label>
+        <input class="m-input" id="vm-url" type="url" placeholder="https://... (.mp4, .webm, .m3u8)">
+      </div>
+      <div onclick="openModal('howto-modal');closeModal('video-modal')" style="cursor:pointer;color:var(--accent);font-size:0.8rem;margin-bottom:14px;display:flex;align-items:center;gap:5px">
+        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        How to get a streaming link?
+      </div>
+      <button class="mbtn mbtn-primary" onclick="modalLoadVideo()">Load for Everyone</button>
+      <button class="mbtn mbtn-secondary" onclick="closeModal('video-modal')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- PDF MODAL (creator) -->
+<div class="modal-overlay" id="pdf-modal">
+  <div class="modal">
+    <div class="modal-head">
+      <span class="modal-title">📖 Add PDF</span>
+      <button class="close-btn" onclick="closeModal('pdf-modal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="m-alert" id="pm-alert"></div>
+
+      <!-- URL option -->
+      <div class="field">
+        <label>PDF Streaming Link</label>
+        <input class="m-input" id="pm-url" type="url" placeholder="https://... (.pdf)">
+      </div>
+      <button class="mbtn mbtn-primary" onclick="addPdfUrl()" id="pm-url-btn">Add Link</button>
+
+      <div class="divider-txt">— or upload from device —</div>
+
+      <!-- Upload option -->
+      <div class="m-file" id="pdf-drop-zone">
+        <input type="file" accept=".pdf" onchange="uploadPdf(this)">
+        <div class="file-ico">📄</div>
+        <div>Click to choose a PDF (max 150MB)</div>
+        <div style="font-size:0.72rem;color:var(--muted);margin-top:4px">File auto-deletes after 24 hours</div>
+      </div>
+      <div class="upload-progress" id="pdf-upload-progress">
+        <div class="upload-progress-bar" id="pdf-progress-bar"></div>
+      </div>
+      <div style="font-size:0.72rem;color:var(--muted);margin-top:8px;text-align:center">File is securely stored on server and shared with all room members</div>
+
+      <button class="mbtn mbtn-secondary" onclick="closeModal('pdf-modal')" style="margin-top:12px">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- HOW-TO MODAL -->
+<div class="modal-overlay" id="howto-modal">
+  <div class="modal">
+    <div class="modal-head">
+      <span class="modal-title">📡 How to Get Streaming Links</span>
+      <button class="close-btn" onclick="closeModal('howto-modal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="howto-section">
+        <h3>🎬 Video Streaming Link</h3>
+        <div class="howto-steps">
+          <div class="howto-step"><strong>Google Drive:</strong> Upload video → Share → "Anyone with link" → Copy ID from URL → Use a GDrive direct link generator → paste the <code>.mp4</code> direct link here.</div>
+          <div class="howto-step"><strong>Mega.nz:</strong> Upload → right-click → "Get Link" → paste directly. Works as-is.</div>
+          <div class="howto-step"><strong>Streamtape / Doodstream / Filemoon:</strong> Upload → click "Share/Embed" → copy the direct <code>.mp4</code> URL.</div>
+          <div class="howto-step"><strong>Direct URL:</strong> Any link ending in <code>.mp4</code>, <code>.webm</code>, or <code>.m3u8</code> works directly!</div>
+        </div>
+      </div>
+      <div class="howto-section">
+        <h3>📖 PDF Streaming Link</h3>
+        <div class="howto-steps">
+          <div class="howto-step"><strong>Google Drive:</strong> Upload PDF → Share → "Anyone with link" → Change <code>/view</code> to <code>/preview</code> in the URL, or use: <code>drive.google.com/uc?export=download&id=FILE_ID</code></div>
+          <div class="howto-step"><strong>Direct URL:</strong> Any link ending in <code>.pdf</code> works directly! Example: <code>https://example.com/book.pdf</code></div>
+          <div class="howto-step"><strong>Or just upload</strong> from your device directly — max 150MB, auto-deleted after 24 hours.</div>
+        </div>
+      </div>
+      <button class="mbtn mbtn-secondary" onclick="closeModal('howto-modal')">Got it!</button>
+    </div>
+  </div>
+</div>
+
+<script src="/room.js"></script>
+</body>
+</html>

@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Watch/Read Together — Stream & Read in Sync</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#08080f; --bg-card:#0d0d1a; --bg-el:#141428;
+  --accent:#818cf8; --accent2:#22d3ee; --accent3:#f472b6;
+  --text:#f1f5f9; --muted:#64748b; --muted2:#94a3b8;
+  --border:rgba(129,140,248,0.1);
+}
+html{scroll-behavior:smooth}
+body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);overflow-x:hidden;line-height:1.6}
+body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(129,140,248,0.025) 1px,transparent 1px),linear-gradient(90deg,rgba(129,140,248,0.025) 1px,transparent 1px);background-size:60px 60px;pointer-events:none;z-index:0}
+
+/* ORBS */
+.orb{position:fixed;border-radius:50%;filter:blur(100px);pointer-events:none;z-index:0}
+.o1{width:700px;height:700px;background:rgba(129,140,248,0.06);top:-300px;left:-200px;animation:orbFloat1 20s ease-in-out infinite}
+.o2{width:500px;height:500px;background:rgba(34,211,238,0.045);bottom:-100px;right:-150px;animation:orbFloat2 25s ease-in-out infinite}
+.o3{width:350px;height:350px;background:rgba(244,114,182,0.035);top:45%;left:55%;animation:orbFloat3 18s ease-in-out infinite}
+@keyframes orbFloat1{0%,100%{transform:translate(0,0)}50%{transform:translate(30px,40px)}}
+@keyframes orbFloat2{0%,100%{transform:translate(0,0)}50%{transform:translate(-40px,-30px)}}
+@keyframes orbFloat3{0%,100%{transform:translate(-50%,-50%)}50%{transform:translate(-45%,-55%)}}
+
+/* NAV */
+nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 48px;display:flex;align-items:center;justify-content:space-between;background:rgba(8,8,15,0.75);backdrop-filter:blur(24px);border-bottom:1px solid var(--border)}
+.logo{font-family:'Syne',sans-serif;font-weight:800;font-size:1.35rem;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;text-decoration:none;letter-spacing:-0.02em}
+.logo span{opacity:0.5}
+
+/* BUTTONS */
+.btn{display:inline-flex;align-items:center;gap:8px;padding:11px 26px;border-radius:12px;font-family:'DM Sans',sans-serif;font-weight:500;font-size:0.9rem;cursor:pointer;text-decoration:none;transition:all 0.22s ease;border:none;outline:none}
+.btn-primary{background:linear-gradient(135deg,var(--accent) 0%,#6366f1 100%);color:#fff;box-shadow:0 0 30px rgba(129,140,248,0.2)}
+.btn-primary:hover{transform:translateY(-2px);box-shadow:0 8px 40px rgba(129,140,248,0.35)}
+.btn-ghost{background:transparent;color:var(--muted2);border:1px solid var(--border)}
+.btn-ghost:hover{background:var(--bg-card);color:var(--text);border-color:rgba(129,140,248,0.25)}
+.btn-lg{font-size:1.05rem;padding:14px 36px}
+
+/* HERO */
+.hero{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:110px 24px 80px;position:relative;z-index:1}
+.badge{display:inline-flex;align-items:center;gap:8px;padding:6px 18px;background:rgba(129,140,248,0.08);border:1px solid rgba(129,140,248,0.18);border-radius:100px;font-size:0.78rem;color:var(--accent);margin-bottom:36px;letter-spacing:0.04em;animation:fadeUp 0.7s ease both}
+.badge-dot{width:6px;height:6px;background:var(--accent);border-radius:50%;animation:blink 2s ease infinite}
+@keyframes blink{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.4;transform:scale(0.7)}}
+.hero h1{font-family:'Syne',sans-serif;font-size:clamp(3.2rem,9vw,6.5rem);font-weight:800;line-height:1.03;letter-spacing:-0.035em;margin-bottom:28px;animation:fadeUp 0.7s ease 0.1s both}
+.hero h1 .w{color:var(--text)}
+.hero h1 .g{background:linear-gradient(130deg,var(--accent) 0%,var(--accent2) 50%,var(--accent3) 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.hero p{font-size:1.15rem;color:var(--muted2);max-width:540px;line-height:1.75;margin-bottom:52px;animation:fadeUp 0.7s ease 0.2s both}
+.hero-cta{display:flex;gap:14px;flex-wrap:wrap;justify-content:center;animation:fadeUp 0.7s ease 0.3s both}
+.hero-scroll{margin-top:90px;display:flex;flex-direction:column;align-items:center;gap:10px;color:var(--muted);font-size:0.72rem;letter-spacing:0.12em;text-transform:uppercase;animation:fadeUp 0.7s ease 0.5s both}
+.scroll-bar{width:1px;height:44px;background:linear-gradient(to bottom,var(--accent),transparent);animation:scrollPulse 2.2s ease infinite}
+@keyframes scrollPulse{0%,100%{opacity:0.25}50%{opacity:0.9}}
+
+/* PREVIEW CARDS (hero decoration) */
+.hero-preview{display:flex;gap:16px;justify-content:center;flex-wrap:wrap;margin-top:64px;animation:fadeUp 0.8s ease 0.4s both}
+.preview-pill{display:flex;align-items:center;gap:10px;background:var(--bg-card);border:1px solid var(--border);border-radius:100px;padding:10px 20px;font-size:0.85rem;color:var(--muted2)}
+.preview-pill .dot{width:8px;height:8px;border-radius:50%;background:var(--accent);animation:blink 2s ease infinite}
+.preview-pill .dot.g{background:#34d399;animation-delay:0.7s}
+.preview-pill .dot.p{background:var(--accent3);animation-delay:1.4s}
+
+/* SECTIONS */
+section{position:relative;z-index:1;padding:100px 48px;max-width:1240px;margin:0 auto}
+.sec-tag{font-size:0.72rem;text-transform:uppercase;letter-spacing:0.15em;color:var(--accent);margin-bottom:14px;font-weight:600}
+.sec-h{font-family:'Syne',sans-serif;font-size:clamp(2rem,5vw,3.4rem);font-weight:800;letter-spacing:-0.025em;margin-bottom:20px;line-height:1.1}
+.sec-sub{font-size:1.05rem;color:var(--muted2);max-width:500px;line-height:1.75;margin-bottom:64px}
+
+/* STEPS */
+.steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:20px}
+.step{background:var(--bg-card);border:1px solid var(--border);border-radius:20px;padding:36px 30px;position:relative;overflow:hidden;transition:transform 0.3s ease,border-color 0.3s ease,box-shadow 0.3s ease}
+.step::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--accent),transparent);opacity:0;transition:opacity 0.3s ease}
+.step:hover{transform:translateY(-6px);border-color:rgba(129,140,248,0.3);box-shadow:0 20px 60px rgba(129,140,248,0.08)}
+.step:hover::before{opacity:1}
+.step-n{font-family:'Syne',sans-serif;font-size:4.5rem;font-weight:800;line-height:1;margin-bottom:16px;background:linear-gradient(135deg,rgba(129,140,248,0.2),rgba(129,140,248,0.04));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.step-ico{font-size:2rem;margin-bottom:16px}
+.step-title{font-family:'Syne',sans-serif;font-size:1.1rem;font-weight:700;margin-bottom:12px}
+.step-desc{font-size:0.875rem;color:var(--muted2);line-height:1.7}
+
+/* FEATURES */
+.feats{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+.feat{background:var(--bg-card);border:1px solid var(--border);border-radius:16px;padding:26px;display:flex;gap:18px;align-items:flex-start;transition:all 0.25s ease}
+.feat:hover{background:var(--bg-el);border-color:rgba(129,140,248,0.22);transform:translateY(-3px)}
+.feat-ico{width:46px;height:46px;background:rgba(129,140,248,0.1);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:1.3rem;flex-shrink:0}
+.feat-h{font-family:'Syne',sans-serif;font-weight:700;font-size:0.97rem;margin-bottom:6px}
+.feat-d{font-size:0.845rem;color:var(--muted2);line-height:1.65}
+
+/* CTA BOTTOM */
+.cta{text-align:center;padding:130px 48px;position:relative;z-index:1}
+.cta::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at center,rgba(129,140,248,0.055) 0%,transparent 65%);pointer-events:none}
+.cta h2{font-family:'Syne',sans-serif;font-size:clamp(2.5rem,6vw,4.5rem);font-weight:800;letter-spacing:-0.025em;margin-bottom:20px}
+.cta p{font-size:1.1rem;color:var(--muted2);margin-bottom:48px}
+
+/* DIVIDER */
+.divider{height:1px;background:linear-gradient(90deg,transparent,var(--border),transparent);max-width:1240px;margin:0 auto;position:relative;z-index:1}
+
+/* FOOTER */
+footer{text-align:center;padding:48px;color:var(--muted);font-size:0.82rem;border-top:1px solid var(--border);position:relative;z-index:1}
+.footer-logo{font-family:'Syne',sans-serif;font-weight:800;font-size:1.2rem;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:12px;display:block}
+
+@keyframes fadeUp{from{opacity:0;transform:translateY(22px)}to{opacity:1;transform:translateY(0)}}
+
+/* RESPONSIVE */
+@media(max-width:768px){
+  nav{padding:14px 20px}
+  section{padding:70px 20px}
+  .hero{padding:90px 20px 60px}
+  .cta{padding:80px 20px}
+}
+</style>
+</head>
+<body>
+<div class="orb o1"></div>
+<div class="orb o2"></div>
+<div class="orb o3"></div>
+
+<!-- NAV -->
+<nav>
+  <a class="logo" href="/">Watch<span>/</span>Read Together</a>
+  <a class="btn btn-primary" href="/auth">Get Started</a>
+</nav>
+
+<!-- HERO -->
+<div class="hero">
+  <div class="badge"><span class="badge-dot"></span>Free · Real-time · Synchronized</div>
+  <h1>
+    <span class="w">Watch & Read</span><br>
+    <span class="g">Together.</span>
+  </h1>
+  <p>Stream videos, flip manga pages, and read ebooks with your friends — all in perfect sync, in real time. No downloads required.</p>
+  <div class="hero-cta">
+    <a class="btn btn-primary btn-lg" href="/auth">
+      Get Started — It's Free
+      <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+    </a>
+    <a class="btn btn-ghost btn-lg" href="#how">How it works</a>
+  </div>
+  <div class="hero-preview">
+    <div class="preview-pill"><span class="dot"></span>Video Sync</div>
+    <div class="preview-pill"><span class="dot g"></span>PDF / Manga</div>
+    <div class="preview-pill"><span class="dot p"></span>Voice Chat</div>
+    <div class="preview-pill">💬 Live Chat</div>
+  </div>
+  <div class="hero-scroll">
+    <span>Explore</span>
+    <div class="scroll-bar"></div>
+  </div>
+</div>
+
+<!-- HOW IT WORKS -->
+<section id="how">
+  <div class="sec-tag">How it works</div>
+  <h2 class="sec-h">Up and running in seconds</h2>
+  <p class="sec-sub">No extensions, no downloads, no setup. Just a link and you're in together.</p>
+  <div class="steps">
+    <div class="step">
+      <div class="step-n">01</div>
+      <div class="step-ico">🔐</div>
+      <div class="step-title">Create Your Account</div>
+      <div class="step-desc">Sign up with Google (one click) or pick a unique username and password. Your account stores all your created rooms.</div>
+    </div>
+    <div class="step">
+      <div class="step-n">02</div>
+      <div class="step-ico">🏠</div>
+      <div class="step-title">Create a Room</div>
+      <div class="step-desc">Hit "Create Room" on your dashboard. Set a room name, max number of people, optional expiry time, and an optional password. You get a unique link and a QR code to share.</div>
+    </div>
+    <div class="step">
+      <div class="step-n">03</div>
+      <div class="step-ico">🔗</div>
+      <div class="step-title">Share the Link</div>
+      <div class="step-desc">Copy the room link or share the QR code with your friends. They enter your token, pass the password if you set one, and they're in instantly.</div>
+    </div>
+    <div class="step">
+      <div class="step-n">04</div>
+      <div class="step-ico">🎬</div>
+      <div class="step-title">Watch or Read Together</div>
+      <div class="step-desc">As the room creator, paste a streaming video URL or upload a PDF. Every play, pause, seek, and page flip is synced for everyone in real time. Chat and talk while you enjoy.</div>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- FEATURES -->
+<section id="features">
+  <div class="sec-tag">Features</div>
+  <h2 class="sec-h">Everything in one place</h2>
+  <p class="sec-sub">Built for anime fans, manga readers, movie nights, and study groups.</p>
+  <div class="feats">
+    <div class="feat">
+      <div class="feat-ico">🎬</div>
+      <div>
+        <div class="feat-h">Video Sync</div>
+        <div class="feat-d">Paste any direct MP4, WebM, or HLS (.m3u8) streaming URL. Every play, pause, and seek is synced to the millisecond for everyone.</div>
+      </div>
+    </div>
+    <div class="feat">
+      <div class="feat-ico">📖</div>
+      <div>
+        <div class="feat-h">PDF / Manga / Ebook Viewer</div>
+        <div class="feat-d">Upload PDFs or paste direct links. Switch between webtoon-style horizontal scroll or single-page vertical mode. All page turns are synced.</div>
+      </div>
+    </div>
+    <div class="feat">
+      <div class="feat-ico">🎙️</div>
+      <div>
+        <div class="feat-h">Voice Chat</div>
+        <div class="feat-d">Peer-to-peer real-time voice chat. Mute yourself or locally mute others. Room creator can globally mute or unmute anyone in the room.</div>
+      </div>
+    </div>
+    <div class="feat">
+      <div class="feat-ico">💬</div>
+      <div>
+        <div class="feat-h">Live Text Chat</div>
+        <div class="feat-d">A live chat panel for reactions and discussion. Messages appear instantly for everyone. React, hype, and vibe together.</div>
+      </div>
+    </div>
+    <div class="feat">
+      <div class="feat-ico">🔒</div>
+      <div>
+        <div class="feat-h">Room Security & Control</div>
+        <div class="feat-d">Password-protect your room, set a user limit, and add an expiry date/time. The creator can kick members and control who hears what.</div>
+      </div>
+    </div>
+    <div class="feat">
+      <div class="feat-ico">📱</div>
+      <div>
+        <div class="feat-h">QR Code Join</div>
+        <div class="feat-d">Share a QR code for instant joining. Friends can scan it with their camera or upload a QR image from their gallery.</div>
+      </div>
+    </div>
+    <div class="feat">
+      <div class="feat-ico">📄</div>
+      <div>
+        <div class="feat-h">Multi-PDF Queue</div>
+        <div class="feat-d">Queue up multiple PDFs in sequence. Read manga volumes one after another without interruption — pages flow seamlessly.</div>
+      </div>
+    </div>
+    <div class="feat">
+      <div class="feat-ico">👑</div>
+      <div>
+        <div class="feat-h">Creator Controls</div>
+        <div class="feat-d">Full control in the hands of the room creator. Load media, change content, add subtitles, kick & mute — others just enjoy.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA BOTTOM -->
+<div class="cta">
+  <h2>Ready to watch together?</h2>
+  <p>Free forever. No credit card. No setup. Just you and your friends. 😹</p>
+  <a class="btn btn-primary btn-lg" href="/auth">
+    Start Watching Now
+    <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+  </a>
+</div>
+
+<footer>
+  <span class="footer-logo">Watch/Read Together</span>
+  <div>Stream anime · Read manga · Together. Always free.</div>
+</footer>
+</body>
+</html>
