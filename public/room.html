@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Room — Watch/Read Together</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Syne:wght@400;600;700;800&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="/socket.io/socket.io.js"></script>
+<style>
+/* ── RESET & ROOT ─────────────────────────────────── */
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;outline:none}
+:root{
+  --bg:#08080f;--bg2:#0d0d1a;--bg3:#111122;--bg4:#141428;
+  --acc:#818cf8;--acc2:#22d3ee;--acc3:#f472b6;
+  --txt:#f1f5f9;--m:#64748b;--m2:#94a3b8;
+  --b:rgba(129,140,248,.1);--b2:rgba(129,140,248,.2);
+  --red:#f87171;--grn:#34d399;--ylw:#fbbf24;--ora:#fb923c;
+  --r:10px;
+}
+html,body{height:100%;overflow:hidden;font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--txt)}
+button,input,textarea,select{font-family:inherit;-webkit-tap-highlight-color:transparent;outline:none}
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-thumb{background:var(--b2);border-radius:2px}
+::-webkit-scrollbar-track{background:transparent}
+
+/* ── TOAST SYSTEM ────────────────────────────────── */
+#toast-container{position:fixed;top:62px;left:50%;transform:translateX(-50%);z-index:9999;display:flex;flex-direction:column;align-items:center;gap:6px;pointer-events:none}
+.toast-item{padding:7px 18px;border-radius:100px;font-size:.78rem;font-weight:500;letter-spacing:.01em;white-space:nowrap;backdrop-filter:blur(16px);box-shadow:0 4px 20px rgba(0,0,0,.4);opacity:0;transform:translateY(-12px) scale(.95);transition:all .3s cubic-bezier(.34,1.56,.64,1);pointer-events:auto;cursor:pointer;max-width:280px;overflow:hidden;text-overflow:ellipsis}
+.toast-item.show{opacity:1;transform:translateY(0) scale(1)}
+.toast-join{background:rgba(52,211,153,.15);border:1px solid rgba(52,211,153,.3);color:var(--grn)}
+.toast-leave{background:rgba(248,113,113,.15);border:1px solid rgba(248,113,113,.3);color:var(--red)}
+.toast-chat{background:rgba(241,245,249,.1);border:1px solid rgba(241,245,249,.2);color:var(--txt)}
+.toast-action{background:rgba(251,146,60,.15);border:1px solid rgba(251,146,60,.3);color:var(--ora)}
+.toast-info{background:rgba(129,140,248,.15);border:1px solid rgba(129,140,248,.3);color:var(--acc)}
+
+/* ── TOPBAR ──────────────────────────────────────── */
+#topbar{height:52px;background:rgba(8,8,15,.95);border-bottom:1px solid var(--b);display:flex;align-items:center;padding:0 14px;gap:10px;flex-shrink:0;position:relative;z-index:200}
+.logo-s{font-family:'Bebas Neue',sans-serif;font-size:1.4rem;letter-spacing:.05em;background:linear-gradient(135deg,var(--acc),var(--acc2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;text-decoration:none}
+.room-name-chip{background:var(--bg3);border:1px solid var(--b);border-radius:7px;padding:3px 10px;font-size:.75rem;color:var(--m2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px}
+.tb-sp{flex:1}
+.crown-chip{background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.2);border-radius:6px;padding:3px 8px;font-size:.68rem;color:var(--ylw);white-space:nowrap}
+.tb-btn{width:34px;height:34px;background:var(--bg3);border:1px solid var(--b);border-radius:9px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--m2);transition:all .2s;font-size:.9rem;flex-shrink:0;position:relative;-webkit-tap-highlight-color:transparent}
+.tb-btn:hover,.tb-btn:active{background:rgba(129,140,248,.1);border-color:var(--b2);color:var(--txt)}
+.tb-btn.tb-active{background:rgba(129,140,248,.15);border-color:var(--acc);color:var(--acc)}
+.tb-btn.tb-danger:hover{background:rgba(248,113,113,.12);border-color:rgba(248,113,113,.3);color:var(--red)}
+.notif-dot{position:absolute;top:5px;right:5px;width:7px;height:7px;background:var(--acc3);border-radius:50%;display:none}
+
+/* ── ROOM LAYOUT ─────────────────────────────────── */
+#room-body{display:flex;height:calc(100vh - 52px);overflow:hidden;position:relative}
+
+/* ── MEDIA AREA ──────────────────────────────────── */
+#media-area{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
+
+/* ── MODE TABS ───────────────────────────────────── */
+.mode-tabs{display:flex;align-items:center;padding:8px 14px;gap:6px;border-bottom:1px solid var(--b);flex-shrink:0;background:rgba(8,8,15,.7)}
+.mode-tab{display:flex;align-items:center;gap:5px;padding:5px 14px;border-radius:8px;cursor:pointer;font-size:.78rem;font-weight:500;color:var(--m);border:1px solid transparent;transition:all .2s;-webkit-tap-highlight-color:transparent}
+.mode-tab.active{background:rgba(129,140,248,.12);border-color:var(--b2);color:var(--acc)}
+.mode-tab:hover:not(.active){color:var(--m2);background:var(--bg3)}
+.mt-sp{flex:1}
+.creator-tag{font-size:.68rem;color:var(--ylw);display:flex;align-items:center;gap:4px;padding:4px 8px;background:rgba(251,191,36,.07);border:1px solid rgba(251,191,36,.15);border-radius:7px}
+
+/* ── VIDEO PANEL ─────────────────────────────────── */
+#video-panel{flex:1;display:flex;flex-direction:column;overflow:hidden;position:relative}
+
+/* Setup screen */
+.video-setup-screen{flex:1;display:flex;align-items:center;justify-content:center;padding:24px}
+.setup-inner{width:100%;max-width:460px}
+.setup-card{background:var(--bg2);border:1px solid var(--b);border-radius:16px;padding:28px}
+.setup-h{font-family:'Syne',sans-serif;font-weight:700;font-size:1.1rem;margin-bottom:6px}
+.setup-sub{color:var(--m2);font-size:.82rem;margin-bottom:20px;line-height:1.6}
+.url-row{display:flex;gap:8px;margin-bottom:10px}
+.url-inp{flex:1;background:rgba(255,255,255,.04);border:1px solid var(--b2);border-radius:9px;padding:10px 13px;color:var(--txt);font-size:.875rem;outline:none;transition:border-color .2s}
+.url-inp:focus{border-color:var(--acc)}
+.url-inp::placeholder{color:var(--m)}
+.load-btn{background:var(--acc);color:#fff;border:none;border-radius:9px;padding:0 18px;cursor:pointer;font-weight:600;font-size:.875rem;white-space:nowrap;transition:opacity .2s}
+.load-btn:hover{opacity:.85}
+.how-link{color:var(--acc);font-size:.77rem;cursor:pointer;display:flex;align-items:center;gap:4px;margin-top:8px}
+
+/* Waiting screen (non-creator) */
+.waiting-screen{flex:1;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px;color:var(--m);padding:24px;text-align:center}
+.waiting-screen .w-ico{font-size:3rem;opacity:.4}
+.waiting-screen .w-title{font-family:'Syne',sans-serif;font-weight:700;font-size:1.1rem;color:var(--m2)}
+.waiting-screen .w-sub{font-size:.82rem;line-height:1.6}
+
+/* Video container */
+#video-container{flex:1;position:relative;background:#000;overflow:hidden;display:none}
+#main-video{width:100%;height:100%;object-fit:contain;display:block}
+/* Buffer overlay */
+#buffer-overlay{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.6);flex-direction:column;gap:12px;z-index:5}
+#buffer-overlay.show{display:flex}
+.buf-ring{width:40px;height:40px;border:3px solid rgba(129,140,248,.3);border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite}
+.buf-text{font-size:.8rem;color:rgba(255,255,255,.7)}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Skip flash */
+.skip-flash{position:absolute;top:50%;transform:translateY(-50%);background:rgba(0,0,0,.55);border-radius:50%;width:60px;height:60px;display:flex;align-items:center;justify-content:center;font-size:1.1rem;color:#fff;pointer-events:none;opacity:0;transition:opacity .3s;z-index:6}
+.skip-flash.left{left:12%}.skip-flash.right{right:12%}
+.skip-flash.show{opacity:1}
+
+/* Video controls */
+.v-ctrl{position:absolute;bottom:0;left:0;right:0;background:linear-gradient(transparent,rgba(0,0,0,.9));padding:36px 14px 12px;z-index:10;opacity:0;transition:opacity .3s}
+#video-container:hover .v-ctrl,#video-container.show-ctrl .v-ctrl{opacity:1}
+.v-prog{height:3px;background:rgba(255,255,255,.18);border-radius:100px;cursor:pointer;margin-bottom:10px;position:relative;transition:height .2s}
+.v-prog:hover{height:5px}
+.v-prog-fill{height:100%;background:var(--acc);border-radius:100px;pointer-events:none;position:relative}
+.v-prog-thumb{position:absolute;right:-5px;top:50%;transform:translateY(-50%);width:11px;height:11px;background:#fff;border-radius:50%;opacity:0;transition:opacity .2s;pointer-events:none}
+.v-prog:hover .v-prog-thumb{opacity:1}
+.v-row{display:flex;align-items:center;gap:8px}
+.v-btn{background:none;border:none;cursor:pointer;color:#fff;display:flex;align-items:center;padding:4px;border-radius:6px;transition:background .15s;flex-shrink:0;-webkit-tap-highlight-color:transparent}
+.v-btn:hover{background:rgba(255,255,255,.1)}
+.v-btn svg{width:18px;height:18px}
+.v-time{font-size:.73rem;color:rgba(255,255,255,.65);white-space:nowrap;font-variant-numeric:tabular-nums}
+.v-sp{flex:1}
+.cc-badge{background:rgba(129,140,248,.2);border-radius:3px;padding:1px 5px;font-size:.6rem;color:var(--acc);font-weight:700}
+.vol-wrap{display:flex;align-items:center;gap:5px}
+.vol-inp{width:60px;-webkit-appearance:none;height:3px;background:rgba(255,255,255,.25);border-radius:100px;outline:none;cursor:pointer}
+.vol-inp::-webkit-slider-thumb{-webkit-appearance:none;width:10px;height:10px;background:#fff;border-radius:50%}
+.chat-bubble-btn{display:flex;align-items:center;gap:5px;background:rgba(129,140,248,.15);border:1px solid var(--b2);border-radius:8px;padding:4px 9px;font-size:.72rem;color:var(--acc);cursor:pointer;transition:all .2s;flex-shrink:0}
+.chat-bubble-btn:hover{background:rgba(129,140,248,.25)}
+/* Subtitle add (creator) */
+.sub-add-row{display:flex;gap:6px;margin-top:12px;border-top:1px solid var(--b);padding-top:12px}
+.sub-inp{flex:1;background:rgba(255,255,255,.04);border:1px solid var(--b);border-radius:8px;padding:8px 12px;color:var(--txt);font-size:.8rem;outline:none}
+.sub-inp:focus{border-color:var(--acc)}
+.sub-inp::placeholder{color:var(--m)}
+
+/* ── PDF PANEL ───────────────────────────────────── */
+#pdf-panel{flex:1;display:none;overflow:hidden}
+.pdf-layout{display:flex;height:100%}
+.pdf-sidebar{width:200px;background:var(--bg2);border-right:1px solid var(--b);display:flex;flex-direction:column;flex-shrink:0}
+.pdf-sb-hd{padding:10px 13px;border-bottom:1px solid var(--b);display:flex;align-items:center;justify-content:space-between;font-size:.68rem;font-weight:600;color:var(--m);text-transform:uppercase;letter-spacing:.08em}
+.pdf-cnt{font-size:.6rem;background:var(--acc);color:#fff;border-radius:100px;padding:1px 6px;font-weight:700}
+.pdf-list{flex:1;overflow-y:auto;padding:6px}
+.pdf-item{background:var(--bg3);border:1px solid var(--b);border-radius:7px;padding:8px 9px;margin-bottom:5px;cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:6px}
+.pdf-item:hover{border-color:var(--b2)}
+.pdf-item.active{background:rgba(129,140,248,.1);border-color:var(--acc)}
+.pdf-item-name{font-size:.72rem;color:var(--m2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pdf-del{color:var(--m);cursor:pointer;font-size:.65rem;flex-shrink:0;padding:2px;border-radius:3px;transition:all .2s}
+.pdf-del:hover{color:var(--red);background:rgba(248,113,113,.1)}
+.pdf-add{margin:7px;background:rgba(129,140,248,.07);border:1px dashed var(--b2);border-radius:7px;padding:8px;text-align:center;font-size:.72rem;color:var(--acc);cursor:pointer;transition:all .2s}
+.pdf-add:hover{background:rgba(129,140,248,.12)}
+.pdf-settings{padding:8px 12px;border-top:1px solid var(--b)}
+.pdf-s-label{font-size:.62rem;color:var(--m);text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px}
+.pdf-orient-row{display:flex;gap:5px;margin-bottom:7px}
+.o-btn{flex:1;padding:5px 4px;background:var(--bg4);border:1px solid var(--b);border-radius:6px;font-size:.68rem;color:var(--m);cursor:pointer;text-align:center;transition:all .2s;-webkit-tap-highlight-color:transparent}
+.o-btn.active{background:rgba(129,140,248,.12);border-color:var(--acc);color:var(--acc)}
+.pdf-page-txt{font-size:.68rem;color:var(--m);text-align:center;margin-bottom:5px}
+.pdf-nav-btns{display:flex;gap:5px}
+.pdf-nav-btn{flex:1;padding:5px;background:var(--bg4);border:1px solid var(--b);border-radius:6px;font-size:.68rem;color:var(--m2);cursor:pointer;text-align:center;transition:all .2s}
+.pdf-nav-btn:hover{background:rgba(129,140,248,.08);color:var(--txt)}
+.pdf-viewer{flex:1;overflow-y:auto;background:#111118;position:relative}
+#pdf-canvas-wrap{display:flex;flex-direction:column;align-items:stretch}
+#pdf-canvas-wrap canvas{display:block;width:100%;height:auto;flex-shrink:0}
+.pdf-loader{position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;gap:10px;color:var(--m)}
+.pdf-loader.show{display:flex}
+.pdf-load-ring{width:34px;height:34px;border:3px solid var(--b);border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite}
+.pdf-empty-state{display:flex;align-items:center;justify-content:center;height:100%;flex-direction:column;gap:10px;color:var(--m);font-size:.85rem}
+
+/* ── FLOATING CHAT PANEL ─────────────────────────── */
+#chat-float{position:fixed;top:60px;right:14px;width:300px;height:calc(100vh - 80px);max-height:520px;background:var(--bg2);border:1px solid var(--b2);border-radius:16px;display:none;flex-direction:column;z-index:500;box-shadow:0 20px 60px rgba(0,0,0,.5);backdrop-filter:blur(16px)}
+#chat-float.open{display:flex}
+.cf-header{padding:12px 14px;border-bottom:1px solid var(--b);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.cf-title{font-family:'Syne',sans-serif;font-weight:700;font-size:.9rem}
+.cf-close{width:26px;height:26px;background:var(--bg3);border:1px solid var(--b);border-radius:7px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--m);font-size:.7rem;transition:all .2s;-webkit-tap-highlight-color:transparent}
+.cf-close:hover{color:var(--red);border-color:rgba(248,113,113,.3)}
+.chat-msgs{flex:1;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:8px}
+.chat-msg{display:flex;gap:7px;animation:msgIn .2s ease}
+@keyframes msgIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.chat-av{width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,var(--acc),#6366f1);display:flex;align-items:center;justify-content:center;font-size:.65rem;font-weight:700;flex-shrink:0;overflow:hidden}
+.chat-av img{width:100%;height:100%;object-fit:cover}
+.chat-bub{background:var(--bg3);border-radius:10px;border-top-left-radius:3px;padding:7px 10px;max-width:100%;word-break:break-word}
+.chat-name{font-size:.65rem;color:var(--acc);font-weight:600;margin-bottom:2px}
+.chat-text{font-size:.8rem;color:var(--m2);line-height:1.45}
+.chat-text .mention{color:var(--acc2);font-weight:600}
+.chat-mine{flex-direction:row-reverse}
+.chat-mine .chat-bub{background:rgba(129,140,248,.12);border-top-left-radius:10px;border-top-right-radius:3px;margin-left:auto}
+.chat-mine .chat-name{text-align:right;color:var(--acc2)}
+.sys-msg{text-align:center;font-size:.72rem;padding:3px 0;border-radius:100px}
+.sys-msg.warn{color:var(--ylw)}
+.sys-msg.error{color:var(--red)}
+.sys-msg.success{color:var(--grn)}
+.chat-inp-area{padding:8px 10px;border-top:1px solid var(--b);flex-shrink:0;position:relative}
+.chat-inp-row{display:flex;gap:6px;align-items:flex-end}
+.chat-inp{flex:1;background:rgba(255,255,255,.04);border:1px solid var(--b);border-radius:9px;padding:8px 11px;color:var(--txt);font-size:.8rem;outline:none;transition:border-color .2s;resize:none;max-height:70px;min-height:36px}
+.chat-inp:focus{border-color:var(--acc)}
+.chat-inp::placeholder{color:var(--m)}
+.chat-send{width:32px;height:32px;background:var(--acc);border:none;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#fff;flex-shrink:0;transition:opacity .2s;-webkit-tap-highlight-color:transparent}
+.chat-send:hover{opacity:.85}
+/* Mention dropdown */
+#mention-drop{position:absolute;bottom:100%;left:10px;right:10px;background:var(--bg2);border:1px solid var(--b2);border-radius:10px;max-height:140px;overflow-y:auto;display:none;z-index:10;box-shadow:0 -8px 24px rgba(0,0,0,.4)}
+.mention-item{padding:8px 12px;cursor:pointer;display:flex;align-items:center;gap:8px;font-size:.8rem;color:var(--m2);transition:background .15s;-webkit-tap-highlight-color:transparent}
+.mention-item:hover{background:rgba(129,140,248,.08);color:var(--txt)}
+.mention-av{width:22px;height:22px;border-radius:50%;background:linear-gradient(135deg,var(--acc),#6366f1);display:flex;align-items:center;justify-content:center;font-size:.6rem;font-weight:700;flex-shrink:0}
+.chat-empty-state{text-align:center;padding:24px 12px;color:var(--m);font-size:.8rem}
+
+/* ── VOICE FLOAT PANEL ───────────────────────────── */
+#voice-float{position:fixed;top:60px;right:14px;width:280px;background:var(--bg2);border:1px solid var(--b2);border-radius:16px;display:none;flex-direction:column;z-index:500;box-shadow:0 20px 60px rgba(0,0,0,.5)}
+#voice-float.open{display:flex}
+.vf-header{padding:12px 14px;border-bottom:1px solid var(--b);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.vf-title{font-family:'Syne',sans-serif;font-weight:700;font-size:.9rem}
+.vf-close{width:26px;height:26px;background:var(--bg3);border:1px solid var(--b);border-radius:7px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--m);font-size:.7rem;transition:all .2s}
+.vf-close:hover{color:var(--red);border-color:rgba(248,113,113,.3)}
+.voice-users{padding:8px;display:flex;flex-direction:column;gap:6px;max-height:200px;overflow-y:auto}
+.vu-item{background:var(--bg3);border:1px solid var(--b);border-radius:8px;padding:8px 10px;display:flex;align-items:center;gap:8px;transition:border-color .2s}
+.vu-item.speaking{border-color:var(--grn);background:rgba(52,211,153,.06)}
+.vu-av{width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,var(--acc),#6366f1);display:flex;align-items:center;justify-content:center;font-size:.68rem;font-weight:700;flex-shrink:0;overflow:hidden}
+.vu-av img{width:100%;height:100%;object-fit:cover}
+.vu-info{flex:1;min-width:0}
+.vu-name{font-size:.78rem;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vu-status{font-size:.65rem;color:var(--m)}
+.vu-status.muted{color:var(--red)}
+.vu-btns{display:flex;gap:3px;flex-shrink:0}
+.vu-btn{width:22px;height:22px;background:var(--bg4);border:1px solid var(--b);border-radius:5px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:.6rem;transition:all .2s;-webkit-tap-highlight-color:transparent}
+.vu-btn:hover{border-color:var(--b2)}
+.voice-ctrls{padding:10px;border-top:1px solid var(--b);display:flex;gap:6px}
+.vc-btn{flex:1;padding:9px 8px;border-radius:9px;border:none;font-family:'DM Sans',sans-serif;font-size:.78rem;font-weight:500;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:4px;transition:all .2s;-webkit-tap-highlight-color:transparent}
+.vc-join{background:var(--grn);color:#000;font-weight:600}
+.vc-join:hover{opacity:.9}
+.vc-mute{background:var(--bg3);color:var(--m2);border:1px solid var(--b)}
+.vc-mute:hover{color:var(--txt)}
+.vc-mute.muted{background:rgba(248,113,113,.12);color:var(--red);border-color:rgba(248,113,113,.25)}
+.vc-leave{background:rgba(248,113,113,.12);color:var(--red);border:1px solid rgba(248,113,113,.22)}
+.vc-leave:hover{background:rgba(248,113,113,.2)}
+
+/* ── USERS PANEL ─────────────────────────────────── */
+#wm-emoji{position:fixed;bottom:20px;right:18px;z-index:300;font-size:1.7rem;opacity:.18;cursor:pointer;transition:all .25s;user-select:none;filter:drop-shadow(0 0 6px rgba(129,140,248,.3))}
+#wm-emoji:hover{opacity:.75;transform:scale(1.12)}
+#users-popup{position:fixed;bottom:60px;right:18px;z-index:400;background:var(--bg2);border:1px solid var(--b2);border-radius:14px;width:220px;max-height:340px;overflow-y:auto;box-shadow:0 16px 48px rgba(0,0,0,.5);display:none}
+#users-popup.open{display:block;animation:popIn .2s ease}
+@keyframes popIn{from{opacity:0;transform:scale(.92) translateY(8px)}to{opacity:1;transform:scale(1) translateY(0)}}
+.up-hd{padding:10px 13px;border-bottom:1px solid var(--b);font-size:.68rem;font-weight:600;color:var(--m);text-transform:uppercase;letter-spacing:.08em}
+.up-user{display:flex;align-items:center;gap:8px;padding:8px 13px;border-bottom:1px solid var(--b);position:relative;transition:background .15s}
+.up-user:last-child{border-bottom:none}
+.up-user:hover{background:rgba(129,140,248,.04)}
+.up-av{width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,var(--acc),#6366f1);display:flex;align-items:center;justify-content:center;font-size:.65rem;font-weight:700;flex-shrink:0;overflow:hidden}
+.up-av img{width:100%;height:100%;object-fit:cover}
+.up-name{flex:1;font-size:.78rem;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.up-3dot{width:20px;height:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--m);border-radius:4px;transition:all .2s;font-size:.8rem;flex-shrink:0;-webkit-tap-highlight-color:transparent}
+.up-3dot:hover{color:var(--txt);background:var(--bg3)}
+/* Dropdown menu */
+.up-menu{position:fixed;background:var(--bg2);border:1px solid var(--b2);border-radius:10px;min-width:180px;box-shadow:0 12px 36px rgba(0,0,0,.5);z-index:600;display:none;overflow:hidden}
+.up-menu.open{display:block;animation:popIn .15s ease}
+.up-menu-item{padding:9px 13px;cursor:pointer;font-size:.78rem;color:var(--m2);display:flex;align-items:center;gap:8px;transition:background .15s;-webkit-tap-highlight-color:transparent}
+.up-menu-item:hover{background:rgba(129,140,248,.08);color:var(--txt)}
+.up-menu-item.danger{color:var(--red)}
+.up-menu-item.danger:hover{background:rgba(248,113,113,.08)}
+.up-menu-item.warn-item{color:var(--ylw)}
+.up-menu-item.warn-item:hover{background:rgba(251,191,36,.06)}
+.up-menu-divider{height:1px;background:var(--b);margin:3px 0}
+
+/* ── MODALS ──────────────────────────────────────── */
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.72);backdrop-filter:blur(8px);z-index:700;display:none;align-items:center;justify-content:center;padding:16px}
+.modal-bg.open{display:flex}
+.modal-box{background:var(--bg2);border:1px solid var(--b);border-radius:18px;width:100%;max-width:440px;max-height:88vh;overflow-y:auto;animation:mIn .25s ease}
+@keyframes mIn{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:scale(1)}}
+.modal-hd{padding:18px 20px 0;display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.modal-title{font-family:'Syne',sans-serif;font-weight:800;font-size:1rem;letter-spacing:-.02em}
+.modal-close{width:28px;height:28px;background:var(--bg3);border:1px solid var(--b);border-radius:7px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--m);font-size:.72rem;transition:all .2s;-webkit-tap-highlight-color:transparent}
+.modal-close:hover{color:var(--red);border-color:rgba(248,113,113,.3)}
+.modal-body{padding:0 20px 20px}
+.m-field{margin-bottom:12px}
+.m-label{display:block;font-size:.7rem;color:var(--m2);font-weight:500;margin-bottom:4px;text-transform:uppercase;letter-spacing:.03em}
+.m-inp{width:100%;background:rgba(255,255,255,.04);border:1px solid var(--b);border-radius:8px;padding:9px 12px;color:var(--txt);font-size:.85rem;outline:none;transition:border-color .2s}
+.m-inp:focus{border-color:var(--acc)}
+.m-inp::placeholder{color:var(--m)}
+.m-file-area{background:rgba(255,255,255,.03);border:2px dashed var(--b2);border-radius:10px;padding:20px;text-align:center;cursor:pointer;position:relative;transition:all .2s;margin-bottom:10px}
+.m-file-area:hover{border-color:var(--acc);background:rgba(129,140,248,.04)}
+.m-file-area input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.m-file-ico{font-size:1.8rem;margin-bottom:6px}
+.m-file-txt{font-size:.78rem;color:var(--m2);line-height:1.5}
+.prog-bar{height:3px;background:var(--b);border-radius:100px;overflow:hidden;margin-top:6px;display:none}
+.prog-fill{height:100%;background:var(--acc);border-radius:100px;width:0%;transition:width .3s}
+.mbtn{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;padding:11px;border-radius:10px;font-family:'DM Sans',sans-serif;font-size:.875rem;font-weight:600;cursor:pointer;border:none;transition:all .2s;margin-bottom:7px;-webkit-tap-highlight-color:transparent}
+.mbtn-p{background:linear-gradient(135deg,var(--acc),#6366f1);color:#fff}
+.mbtn-p:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 6px 20px rgba(129,140,248,.3)}
+.mbtn-p:disabled{opacity:.5;cursor:not-allowed}
+.mbtn-s{background:var(--bg3);color:var(--m2);border:1px solid var(--b)}
+.mbtn-s:hover{color:var(--txt);border-color:var(--b2)}
+.m-divider{display:flex;align-items:center;gap:10px;color:var(--m);font-size:.7rem;text-transform:uppercase;letter-spacing:.1em;margin:12px 0}
+.m-divider::before,.m-divider::after{content:'';flex:1;height:1px;background:var(--b)}
+.m-alert{padding:8px 12px;border-radius:8px;font-size:.78rem;margin-bottom:10px;display:none}
+.m-alert.err{background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.25);color:var(--red)}
+.m-alert.ok{background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.25);color:var(--grn)}
+.m-alert.show{display:block}
+.howto-step{background:var(--bg3);border:1px solid var(--b);border-radius:8px;padding:10px 12px;margin-bottom:7px;font-size:.77rem;color:var(--m2);line-height:1.65}
+.howto-step strong{color:var(--txt)}
+.howto-step code{background:rgba(129,140,248,.1);padding:1px 4px;border-radius:3px;font-family:monospace;font-size:.85em;color:var(--acc)}
+
+/* ── BANNED/KICKED OVERLAY ───────────────────────── */
+#end-overlay{position:fixed;inset:0;background:rgba(8,8,15,.97);z-index:1000;display:none;align-items:center;justify-content:center;flex-direction:column;gap:14px;text-align:center;padding:24px}
+#end-overlay.show{display:flex}
+.eo-ico{font-size:3.5rem}
+.eo-title{font-family:'Syne',sans-serif;font-weight:800;font-size:1.5rem}
+.eo-sub{color:var(--m2);font-size:.875rem;max-width:300px}
+.eo-btn{background:var(--acc);color:#fff;border:none;padding:11px 28px;border-radius:11px;font-family:'DM Sans',sans-serif;font-size:.9rem;font-weight:600;cursor:pointer;margin-top:6px}
+
+/* ── UTILITIES ───────────────────────────────────── */
+.spin-sm{display:inline-block;width:12px;height:12px;border:2px solid rgba(255,255,255,.25);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite;margin-right:4px;vertical-align:middle}
+.hidden{display:none!important}
+
+@media(max-width:640px){
+  #chat-float{right:8px;width:calc(100vw - 16px);top:60px;height:55vh;max-height:none}
+  #voice-float{right:8px;width:calc(100vw - 16px)}
+  #users-popup{right:8px;width:calc(100vw - 16px)}
+  .pdf-sidebar{width:160px}
+}
+</style>
+</head>
+<body>
+
+<!-- BANNED/KICKED -->
+<div id="end-overlay">
+  <div class="eo-ico" id="eo-ico">🚫</div>
+  <div class="eo-title" id="eo-title">Removed</div>
+  <div class="eo-sub" id="eo-sub">You were removed from this room.</div>
+  <button class="eo-btn" onclick="location.href='/mainpage'">Back to Dashboard</button>
+</div>
+
+<!-- TOASTS -->
+<div id="toast-container"></div>
+
+<!-- TOPBAR -->
+<div id="topbar">
+  <a class="logo-s" href="/mainpage">W/R</a>
+  <div class="room-name-chip" id="room-name-chip">Loading...</div>
+  <div class="tb-sp"></div>
+  <div id="crown-chip" class="crown-chip hidden">👑 Creator</div>
+  <button class="tb-btn" id="tb-chat" onclick="toggleChatPanel()" title="Chat">
+    💬<span class="notif-dot" id="chat-notif"></span>
+  </button>
+  <button class="tb-btn" id="tb-voice" onclick="toggleVoicePanel()" title="Voice Chat">🎙️</button>
+  <button class="tb-btn tb-danger" onclick="leaveRoom()" title="Leave">
+    <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+  </button>
+</div>
+
+<!-- ROOM BODY -->
+<div id="room-body">
+  <div id="media-area">
+
+    <!-- MODE TABS -->
+    <div class="mode-tabs">
+      <div class="mode-tab active" id="mt-video" onclick="switchMode('video')">🎬 Video</div>
+      <div class="mode-tab" id="mt-pdf" onclick="switchMode('pdf')">📖 PDF / Manga</div>
+      <div class="mt-sp"></div>
+      <div class="creator-tag hidden" id="creator-tag">👑 You control the room</div>
+    </div>
+
+    <!-- VIDEO PANEL -->
+    <div id="video-panel">
+      <!-- Creator setup -->
+      <div class="video-setup-screen" id="vs-creator" style="display:none">
+        <div class="setup-inner">
+          <div class="setup-card">
+            <div class="setup-h">🎬 Load a Video</div>
+            <div class="setup-sub">Paste a direct streaming link. Everyone in the room will see it instantly.</div>
+            <div class="url-row">
+              <input class="url-inp" id="video-url-inp" type="url" placeholder="https://... (.mp4 / .webm / .m3u8)">
+              <button class="load-btn" onclick="loadVideoUrl()">Load</button>
+            </div>
+            <div class="how-link" onclick="openModal('howto-modal')">
+              ℹ️ How to get a streaming link?
+            </div>
+            <div id="sub-add-section" class="sub-add-row">
+              <input class="sub-inp" id="sub-url-inp" type="text" placeholder="Subtitle URL (.vtt) or pick file">
+              <label style="background:var(--bg3);color:var(--m2);border:1px solid var(--b);border-radius:7px;padding:0 10px;cursor:pointer;display:flex;align-items:center;font-size:.72rem;white-space:nowrap">
+                📂 File<input type="file" accept=".vtt,.srt" style="display:none" onchange="loadSubFile(this)">
+              </label>
+              <button onclick="applySubtitle()" class="load-btn" style="padding:0 12px;font-size:.78rem">Add CC</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- Non-creator waiting -->
+      <div class="waiting-screen" id="vs-waiting" style="display:none">
+        <div class="w-ico">⏳</div>
+        <div class="w-title">Waiting for the host...</div>
+        <div class="w-sub">The room creator will load a video soon.</div>
+        <div style="font-size:.78rem;color:var(--m);margin-top:4px" id="waiting-detail">Room Creator didn't set any Video to play</div>
+      </div>
+      <!-- Actual video container -->
+      <div id="video-container">
+        <video id="main-video" crossorigin="anonymous" preload="auto">
+          <track kind="subtitles" id="sub-track" src="" default>
+        </video>
+        <!-- Buffer overlay -->
+        <div id="buffer-overlay">
+          <div class="buf-ring"></div>
+          <div class="buf-text" id="buf-text">Buffering...</div>
+        </div>
+        <!-- Skip flashes -->
+        <div class="skip-flash left" id="skip-left">⏪ 10s</div>
+        <div class="skip-flash right" id="skip-right">10s ⏩</div>
+        <!-- Controls -->
+        <div class="v-ctrl" id="v-ctrl">
+          <div class="v-prog" id="v-prog" onclick="onSeek(event)">
+            <div class="v-prog-fill" id="v-prog-fill" style="width:0%">
+              <div class="v-prog-thumb"></div>
+            </div>
+          </div>
+          <div class="v-row">
+            <button class="v-btn" id="v-play-btn" onclick="togglePlay()">
+              <svg id="v-play-ico" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
+            </button>
+            <button class="v-btn" onclick="skip(-10)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 17l-5-5 5-5"/><path d="M18 17l-5-5 5-5"/></svg>
+            </button>
+            <button class="v-btn" onclick="skip(10)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 17l5-5-5-5"/><path d="M13 17l5-5-5-5"/></svg>
+            </button>
+            <span class="v-time" id="v-time">0:00 / 0:00</span>
+            <div class="v-sp"></div>
+            <span class="cc-badge hidden" id="cc-badge">CC</span>
+            <div class="chat-bubble-btn" onclick="toggleChatPanel()">💬 Chat</div>
+            <div class="vol-wrap">
+              <button class="v-btn" onclick="toggleVolMute()">
+                <svg id="vol-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11,5 6,9 2,9 2,15 6,15 11,19"/><path d="M19.07,4.93a10,10,0,0,1,0,14.14M15.54,8.46a5,5,0,0,1,0,7.07"/></svg>
+              </button>
+              <input class="vol-inp" type="range" min="0" max="1" step="0.05" value="1" oninput="setVol(this.value)">
+            </div>
+            <button class="v-btn" onclick="toggleFS()" title="Fullscreen">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 00-2 2v3m18 0V5a2 2 0 00-2-2h-3m0 18h3a2 2 0 002-2v-3M3 16v3a2 2 0 002 2h3"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PDF PANEL -->
+    <div id="pdf-panel">
+      <div class="pdf-layout">
+        <div class="pdf-sidebar">
+          <div class="pdf-sb-hd">
+            PDFs <span class="pdf-cnt" id="pdf-cnt">0</span>
+          </div>
+          <div class="pdf-list" id="pdf-list">
+            <div class="pdf-empty-state" style="height:60px;font-size:.75rem">No PDFs loaded</div>
+          </div>
+          <div id="pdf-add-btn" class="pdf-add hidden" onclick="openModal('pdf-modal')">+ Add PDF</div>
+          <div class="pdf-settings">
+            <div class="pdf-s-label">View Mode</div>
+            <div class="pdf-orient-row">
+              <div class="o-btn active" id="o-h" onclick="setPdfOrient('horizontal')">Webtoon</div>
+              <div class="o-btn" id="o-v" onclick="setPdfOrient('vertical')">Page</div>
+            </div>
+            <div class="pdf-page-txt" id="pdf-page-info">—</div>
+            <div class="pdf-nav-btns">
+              <div class="pdf-nav-btn" onclick="pdfPrev()">◀ Prev</div>
+              <div class="pdf-nav-btn" onclick="pdfNext()">Next ▶</div>
+            </div>
+          </div>
+        </div>
+        <div class="pdf-viewer" id="pdf-scroll" onscroll="onPdfScroll()">
+          <div id="pdf-canvas-wrap"></div>
+          <div class="pdf-loader" id="pdf-loader">
+            <div class="pdf-load-ring"></div>
+            <div style="font-size:.78rem;color:var(--m)">Loading PDF...</div>
+          </div>
+          <div class="pdf-empty-state" id="pdf-empty-view">
+            <div style="font-size:2.5rem">📖</div>
+            <div>No PDF loaded yet</div>
+            <div style="font-size:.75rem;color:var(--m)">Creator will add a PDF shortly</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- FLOATING CHAT -->
+<div id="chat-float">
+  <div class="cf-header">
+    <span class="cf-title">💬 Chat</span>
+    <div class="cf-close" onclick="toggleChatPanel()">✕</div>
+  </div>
+  <div class="chat-msgs" id="chat-msgs">
+    <div class="chat-empty-state">No messages yet 💬</div>
+  </div>
+  <div class="chat-inp-area">
+    <div id="mention-drop"></div>
+    <div class="chat-inp-row">
+      <textarea class="chat-inp" id="chat-inp" placeholder="Message... (@user to mention)" rows="1" maxlength="1000" onkeydown="chatKey(event)" oninput="onChatInput(this)"></textarea>
+      <button class="chat-send" onclick="sendChat()">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- FLOATING VOICE -->
+<div id="voice-float">
+  <div class="vf-header">
+    <span class="vf-title">🎙️ Voice Chat</span>
+    <div class="vf-close" onclick="toggleVoicePanel()">✕</div>
+  </div>
+  <div class="voice-users" id="voice-users-list">
+    <div style="text-align:center;color:var(--m);font-size:.78rem;padding:12px">No one in voice chat</div>
+  </div>
+  <div class="voice-ctrls">
+    <button class="vc-btn vc-join" id="vc-join" onclick="joinVoice()">🎙️ Join</button>
+    <button class="vc-btn vc-mute hidden" id="vc-mute" onclick="toggleMic()">🎙️ Mute</button>
+    <button class="vc-btn vc-leave hidden" id="vc-leave" onclick="leaveVoice()">📵 Leave</button>
+  </div>
+</div>
+
+<!-- WATERMARK + USERS POPUP -->
+<div id="wm-emoji" onclick="toggleUsersPopup()">😹</div>
+<div id="users-popup">
+  <div class="up-hd" id="up-hd">Members (0)</div>
+  <div id="up-list"></div>
+</div>
+<div id="up-menu" class="up-menu"></div>
+
+<!-- VIDEO LOAD MODAL -->
+<div class="modal-bg" id="video-modal">
+  <div class="modal-box">
+    <div class="modal-hd"><span class="modal-title">🎬 Load Video</span><div class="modal-close" onclick="closeModal('video-modal')">✕</div></div>
+    <div class="modal-body">
+      <div class="m-alert" id="vm-alert"></div>
+      <div class="m-field">
+        <label class="m-label">Streaming Link</label>
+        <input class="m-inp" id="vm-url" type="url" placeholder="https://... (.mp4 / .webm / .m3u8)">
+      </div>
+      <div class="how-link" onclick="openModal('howto-modal')" style="margin-bottom:14px">ℹ️ How to get a streaming link?</div>
+      <button class="mbtn mbtn-p" onclick="modalLoadVideo()">Load for Everyone</button>
+      <button class="mbtn mbtn-s" onclick="closeModal('video-modal')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- PDF MODAL -->
+<div class="modal-bg" id="pdf-modal">
+  <div class="modal-box">
+    <div class="modal-hd"><span class="modal-title">📖 Add PDF</span><div class="modal-close" onclick="closeModal('pdf-modal')">✕</div></div>
+    <div class="modal-body">
+      <div class="m-alert" id="pm-alert"></div>
+      <div class="m-field">
+        <label class="m-label">Streaming Link (.pdf URL)</label>
+        <input class="m-inp" id="pm-url" type="url" placeholder="https://example.com/book.pdf">
+      </div>
+      <button class="mbtn mbtn-p" id="pm-url-btn" onclick="addPdfUrl()">Add PDF Link</button>
+      <div class="m-divider">or upload from device</div>
+      <div class="m-file-area">
+        <div class="m-file-ico">📄</div>
+        <div class="m-file-txt">Click to choose PDF (max 150MB)<br><span style="font-size:.7rem;color:var(--m)">Auto-deleted after 24 hours</span></div>
+        <input type="file" accept=".pdf,application/pdf" onchange="uploadPdfFile(this)">
+      </div>
+      <div class="prog-bar" id="pdf-prog-bar"><div class="prog-fill" id="pdf-prog-fill"></div></div>
+      <button class="mbtn mbtn-s" onclick="closeModal('pdf-modal')" style="margin-top:8px">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- HOW-TO MODAL -->
+<div class="modal-bg" id="howto-modal">
+  <div class="modal-box">
+    <div class="modal-hd"><span class="modal-title">📡 How to Get Streaming Links</span><div class="modal-close" onclick="closeModal('howto-modal')">✕</div></div>
+    <div class="modal-body">
+      <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:.85rem;margin-bottom:10px">🎬 Video Links</div>
+      <div class="howto-step"><strong>Google Drive:</strong> Upload → Share → "Anyone with link" → Use a GDrive direct link generator → paste the <code>.mp4</code> link</div>
+      <div class="howto-step"><strong>Mega.nz:</strong> Upload → Right-click → "Get Link" → paste directly</div>
+      <div class="howto-step"><strong>Streamtape / Doodstream:</strong> Upload → Share → copy the direct <code>.mp4</code> URL</div>
+      <div class="howto-step"><strong>Any direct URL:</strong> Links ending in <code>.mp4</code>, <code>.webm</code>, or <code>.m3u8</code> work directly!</div>
+      <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:.85rem;margin:14px 0 10px">📖 PDF Links</div>
+      <div class="howto-step"><strong>Google Drive:</strong> Upload → Share → change <code>/view</code> to <code>/preview</code>, or use <code>uc?export=download&id=FILE_ID</code></div>
+      <div class="howto-step"><strong>Any direct URL:</strong> Links ending in <code>.pdf</code> work directly!</div>
+      <div class="howto-step"><strong>Or just upload</strong> from your device — max 150MB, auto-deleted in 24h</div>
+      <button class="mbtn mbtn-s" onclick="closeModal('howto-modal')" style="margin-top:12px">Got it!</button>
+    </div>
+  </div>
+</div>
+
+<script src="/room.js"></script>
+</body>
+</html>
